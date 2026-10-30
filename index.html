@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>八球 · 斯诺克 · 3D 台球</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --panel: rgba(14, 13, 12, 0.74);
+    --panel-solid: #15130f;
+    --line: rgba(255, 255, 255, 0.1);
+    --text: #ece6da;
+    --muted: #9b9488;
+    --gold: #e2b25a;
+    --gold-soft: rgba(226, 178, 90, 0.18);
+    --bad: #e2674f;
+    --good: #6cc48e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0b0a; color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif; }
+  #c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  button { font: inherit; color: var(--text); background: transparent; border: 0; cursor: pointer; }
+  .hidden { display: none !important; }
+
+  /* ---- 记分 ---- */
+  #players { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; pointer-events: none; }
+  .player { min-width: 230px; padding: 10px 14px; transition: border-color .2s, box-shadow .2s; }
+  .player.active { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 24px var(--gold-soft); }
+  .player .top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+  .player .name { font-weight: 600; font-size: 15px; }
+  .player.active .name::before { content: "●"; color: var(--gold); margin-right: 6px; font-size: 11px; vertical-align: 2px; }
+  .player .group { font-size: 12px; color: var(--muted); }
+  .balls { display: flex; gap: 4px; min-height: 20px; align-items: center; }
+  .chip { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; box-shadow: inset -2px -3px 5px rgba(0,0,0,.35), inset 2px 2px 4px rgba(255,255,255,.25); }
+  .chip i { font-style: normal; font-size: 8.5px; font-weight: 700; color: #111; background: #f6f1e3; border-radius: 50%; width: 11px; height: 11px; display: grid; place-items: center; }
+  .chip.gone { opacity: .18; filter: grayscale(.6); }
+  .tag { font-size: 12px; color: var(--muted); }
+  #modeTag { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); padding: 7px 14px; font-size: 13px; color: var(--muted); }
+
+  #bih { position: fixed; top: 92px; left: 50%; transform: translateX(-50%); padding: 5px 12px; font-size: 13px; color: #1a1408; background: var(--gold); border-radius: 999px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #bih.show { opacity: 1; }
+  #toast { position: fixed; top: 128px; left: 50%; transform: translate(-50%, -6px); padding: 9px 16px; font-size: 14px; opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none; max-width: calc(100vw - 32px); text-align: center; z-index: 5; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  #menuBtn { position: fixed; top: 14px; right: 14px; padding: 8px 12px; font-size: 13px; }
+  #menuBtn kbd { font: 11px/1 inherit; padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); margin-left: 6px; }
+
+  /* ---- 力度条 ---- */
+  #powerWrap { position: fixed; right: 22px; top: 50%; transform: translateY(-40%); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  #power { width: 44px; height: 300px; padding: 5px; position: relative; cursor: ns-resize; touch-action: none; }
+  #power .track { position: absolute; inset: 5px; border-radius: 8px; background: linear-gradient(to bottom, rgba(255,255,255,.04), rgba(255,255,255,.08)); overflow: hidden; }
+  #powerFill { position: absolute; left: 0; right: 0; top: 0; height: 0; background: linear-gradient(to bottom, #3fae6a, #e2b25a 55%, #d6452f); border-radius: 0 0 6px 6px; }
+  #power .grip { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); font-size: 11px; color: var(--muted); writing-mode: vertical-rl; letter-spacing: 3px; pointer-events: none; }
+  #powerVal { font-size: 12px; color: var(--muted); min-height: 16px; font-variant-numeric: tabular-nums; }
+
+  /* ---- 塞 ---- */
+  #spinWrap { position: fixed; left: 18px; bottom: 18px; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 150px; }
+  #spin { width: 112px; height: 112px; border-radius: 50%; position: relative; cursor: pointer; touch-action: none;
+    background: radial-gradient(circle at 35% 30%, #fffdf7, #e9e2d0 55%, #b9b09a); box-shadow: inset -6px -8px 16px rgba(0,0,0,.25); }
+  #spin::before { content: ""; position: absolute; inset: 22.5%; border-radius: 50%; border: 1px dashed rgba(0,0,0,.25); }
+  #spin::after { content: ""; position: absolute; left: 50%; top: 8%; bottom: 8%; border-left: 1px solid rgba(0,0,0,.12); }
+  #spinDot, #spinUser { position: absolute; width: 14px; height: 14px; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+  #spinDot { background: #2c63b8; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+  #spinUser { border: 2px dashed #2c63b8; opacity: .6; }
+  #spinLabel { font-size: 12px; color: var(--muted); text-align: center; }
+  #autoBadge { font-size: 11px; color: #1a1408; background: var(--gold); border-radius: 999px; padding: 2px 8px; }
+  #cueName { font-size: 11px; color: var(--muted); }
+
+  #hint { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); font-size: 12px; color: var(--muted); padding: 7px 14px; text-align: center; max-width: calc(100vw - 380px); }
+  #hint b { color: var(--text); font-weight: 600; }
+  #lockHint { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); padding: 10px 16px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; text-align: center; max-width: calc(100vw - 32px); }
+  #lockHint.show { opacity: 1; }
+  #lockHint b { color: var(--gold); font-weight: 600; }
+
+  /* ---- 全屏层 ---- */
+  .overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(6,5,4,.62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); z-index: 20; padding: 16px; }
+  .card { padding: 26px 30px; max-width: 760px; width: 100%; max-height: calc(100vh - 32px); overflow: auto; background: rgba(20,18,15,.92); }
+  .card h1 { margin: 0 0 4px; font-size: 30px; letter-spacing: 2px; }
+  .card h2 { margin: 0 0 14px; font-size: 20px; }
+  .card h3 { margin: 18px 0 10px; font-size: 13px; color: var(--muted); font-weight: 500; letter-spacing: 1px; }
+  .sub { color: var(--muted); margin: 0 0 22px; font-size: 14px; }
+  .bigbtns { display: grid; gap: 10px; }
+  .bigbtn { text-align: left; padding: 14px 16px; border-radius: 12px; background: rgba(255,255,255,.05); border: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .bigbtn:hover:not(:disabled) { border-color: var(--gold); background: var(--gold-soft); }
+  .bigbtn:disabled { opacity: .45; cursor: default; }
+  .bigbtn b { font-size: 16px; }
+  .bigbtn span { color: var(--muted); font-size: 13px; }
+  .primary { padding: 10px 22px; border-radius: 10px; background: var(--gold); color: #1a1408; font-weight: 700; }
+  .ghost { padding: 10px 18px; border-radius: 10px; background: rgba(255,255,255,.06); }
+  .ghost:hover { background: rgba(255,255,255,.12); }
+  .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; flex-wrap: wrap; }
+  .field { display: grid; gap: 6px; margin-bottom: 14px; }
+  .field label { font-size: 13px; color: var(--muted); }
+  .field input { font: inherit; color: var(--text); background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; outline: none; }
+  .field input:focus { border-color: var(--gold); }
+  .field input.err { border-color: var(--bad); }
+  .errmsg { color: var(--bad); font-size: 13px; min-height: 18px; }
+
+  .row { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .row label { color: var(--text); font-size: 14px; }
+  .seg { display: flex; background: rgba(255,255,255,.05); border-radius: 8px; padding: 2px; }
+  .seg button { padding: 5px 12px; border-radius: 6px; font-size: 13px; color: var(--muted); }
+  .seg button.on { background: var(--gold); color: #1a1408; font-weight: 600; }
+  input[type=range] { accent-color: var(--gold); width: 180px; }
+
+  .cues { display: grid; gap: 10px; }
+  .cuecard { text-align: left; padding: 12px 14px; border-radius: 12px; background: rgba(255,255,255,.04); border: 1px solid var(--line); display: grid; gap: 6px; }
+  .cuecard:hover { border-color: rgba(226,178,90,.6); }
+  .cuecard.on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); background: var(--gold-soft); }
+  .cuecard .t { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .cuecard .t b { font-size: 15px; }
+  .cuecard .t span { font-size: 12px; color: var(--muted); }
+  .cuecard .specs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cuecard .specs i { font-style: normal; font-size: 11px; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,.07); color: var(--muted); }
+  .cuecard .note { font-size: 12px; color: var(--muted); }
+  .cuecard .eq { font-size: 11px; color: var(--gold); }
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+  .keys kbd { font: 12px/1 inherit; color: var(--text); padding: 4px 7px; border: 1px solid var(--line); border-radius: 5px; background: rgba(255,255,255,.05); white-space: nowrap; }
+
+  /* ---- 教学 ---- */
+  #tut { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); width: min(560px, calc(100vw - 32px)); padding: 14px 18px; z-index: 6; }
+  #tut .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  #tut .step { font-size: 12px; color: var(--gold); letter-spacing: 1px; }
+  #tut h4 { margin: 0; font-size: 17px; }
+  #tut p { margin: 6px 0 0; font-size: 14px; line-height: 1.6; color: #d8d1c4; }
+  #tut p b { color: var(--gold); }
+  #tut .bar { height: 3px; background: rgba(255,255,255,.08); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+  #tut .bar i { display: block; height: 100%; background: var(--gold); transition: width .3s; }
+  #tutFb { font-size: 13px; margin-top: 8px; min-height: 18px; }
+  #tutFb.good { color: var(--good); } #tutFb.bad { color: var(--bad); }
+
+
+  /* ===================== 斯诺克转播风格 ===================== */
+  .snkbtn { background: linear-gradient(110deg, rgba(10,60,40,.55), rgba(10,30,60,.55)) !important; border-color: rgba(226,178,90,.45) !important; }
+  .snkbtn b::after { content: "NEW"; font: 600 10px Oswald, sans-serif; letter-spacing: 1px; color: #1a1408; background: var(--gold); border-radius: 4px; padding: 2px 5px; margin-left: 8px; vertical-align: 2px; }
+  #snkUI { position: fixed; inset: 0; pointer-events: none; z-index: 4; }
+  #sb { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); min-width: 640px; filter: drop-shadow(0 10px 30px rgba(0,0,0,.55)); }
+  .sb-main { display: grid; grid-template-columns: 1fr auto auto auto 1fr; align-items: stretch; height: 52px;
+    background: linear-gradient(180deg, #13233f 0%, #0a1324 100%); border: 1px solid rgba(255,255,255,.12); border-radius: 10px 10px 0 0; overflow: hidden; position: relative; }
+  .sb-main::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--gold), transparent); }
+  .sb-side { display: flex; align-items: center; gap: 10px; padding: 0 16px; font: 500 19px Oswald, sans-serif; letter-spacing: .5px; color: #dfe7f5; transition: background .3s; }
+  .sb-left { justify-content: flex-end; } .sb-right { justify-content: flex-start; }
+  .sb-side.on { background: linear-gradient(90deg, rgba(226,178,90,0) 0%, rgba(226,178,90,.22) 100%); color: #fff; }
+  .sb-right.on { background: linear-gradient(270deg, rgba(226,178,90,0) 0%, rgba(226,178,90,.22) 100%); }
+  .sb-arrow { width: 0; height: 0; border: 7px solid transparent; opacity: 0; transition: opacity .3s; }
+  .sb-left .sb-arrow { border-left-color: var(--gold); order: -1; }
+  .sb-right .sb-arrow { border-right-color: var(--gold); }
+  .sb-side.on .sb-arrow { opacity: 1; animation: sbPulse 1.2s ease-in-out infinite; }
+  @keyframes sbPulse { 50% { opacity: .35; } }
+  .sb-fr { font: 600 15px Oswald, sans-serif; color: #0a1324; background: #dfe7f5; border-radius: 4px; padding: 1px 7px; min-width: 22px; text-align: center; }
+  .sb-score { font: 700 30px Oswald, sans-serif; min-width: 72px; display: grid; place-items: center; color: #fff; background: rgba(255,255,255,.05); font-variant-numeric: tabular-nums; }
+  .sb-score.bump { animation: bump .5s ease; }
+  @keyframes bump { 30% { transform: scale(1.25); color: var(--gold); } }
+  .sb-mid { display: grid; place-items: center; padding: 0 14px; background: #060b16; }
+  .sb-mid span { font: 500 10px Oswald, sans-serif; letter-spacing: 2px; color: #8ea0bf; }
+  .sb-mid b { font: 600 14px Oswald, sans-serif; letter-spacing: 1.5px; color: var(--gold); }
+  .sb-sub { display: flex; justify-content: center; gap: 2px; }
+  .sb-cell { display: flex; align-items: center; gap: 8px; padding: 6px 14px; background: rgba(6,11,22,.86); border: 1px solid rgba(255,255,255,.08); border-top: 0; font-size: 12px; color: #9fb0cc; }
+  .sb-cell:first-child { border-radius: 0 0 0 10px; } .sb-cell:last-child { border-radius: 0 0 10px 0; }
+  .sb-cell em { font-style: normal; font: 500 11px Oswald, sans-serif; letter-spacing: 1.5px; }
+  .sb-cell b { font: 600 16px Oswald, sans-serif; color: #fff; font-variant-numeric: tabular-nums; }
+  .sb-break b { color: var(--gold); font-size: 18px; }
+  .sb-break.hot { background: linear-gradient(90deg, rgba(226,178,90,.25), rgba(6,11,22,.86)); }
+  #sbBreakBalls { display: flex; gap: 2px; max-width: 220px; overflow: hidden; }
+  #sbBreakBalls i, #ballOnDots i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; box-shadow: inset -1.5px -2px 3px rgba(0,0,0,.4), inset 1px 1px 2px rgba(255,255,255,.35); }
+  .sb-req { color: #fff !important; background: linear-gradient(90deg, #a3162c, #6a0d1c) !important; font-weight: 600; animation: sbPulse 1.4s ease-in-out infinite; }
+  #ballOn { position: absolute; left: 18px; top: 18px; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
+    background: rgba(6,11,22,.8); border: 1px solid rgba(255,255,255,.1); font-size: 14px; color: #dfe7f5; }
+  #ballOn em { font-style: normal; font: 500 11px Oswald, sans-serif; letter-spacing: 1.5px; color: #8ea0bf; }
+  #ballOnDots { display: flex; gap: 3px; } #ballOnDots i { width: 14px; height: 14px; }
+  #hbBox { position: absolute; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 10px; background: rgba(6,11,22,.75); border: 1px solid rgba(255,255,255,.08); font-size: 12px; color: #9fb0cc; }
+  #hbBox em { font-style: normal; font: 500 10px Oswald, sans-serif; letter-spacing: 1.5px; color: #8ea0bf; }
+  /* 中央横幅 */
+  #snkBanner { position: absolute; left: 0; right: 0; top: 38%; display: grid; place-items: center; opacity: 0; pointer-events: none; }
+  #snkBanner .bn-in { position: relative; padding: 14px 60px; text-align: center; transform: skewX(-12deg);
+    background: linear-gradient(90deg, transparent, rgba(8,16,32,.92) 15%, rgba(8,16,32,.92) 85%, transparent); border-top: 2px solid var(--bn, var(--gold)); border-bottom: 2px solid var(--bn, var(--gold)); }
+  #snkBanner b { display: block; font: 700 54px/1 Oswald, sans-serif; letter-spacing: 6px; color: var(--bn, var(--gold)); transform: skewX(12deg); text-shadow: 0 0 24px var(--bn, var(--gold)); }
+  #snkBanner span { display: block; margin-top: 6px; font-size: 15px; color: #dfe7f5; transform: skewX(12deg); }
+  #snkBanner.show { animation: banner 2.6s cubic-bezier(.2,.9,.2,1) forwards; }
+  @keyframes banner { 0% { opacity: 0; transform: translateX(-60px) scaleY(.6); } 12% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; transform: translateX(60px); } }
+  /* 加分飘字 */
+  #ptsFloat { position: absolute; inset: 0; }
+  .pf { position: absolute; font: 700 34px Oswald, sans-serif; color: var(--c); text-shadow: 0 0 14px rgba(0,0,0,.7), 0 0 20px var(--c); animation: pf 1.4s ease-out forwards; }
+  @keyframes pf { 0% { opacity: 0; transform: translateY(10px) scale(.6); } 15% { opacity: 1; transform: scale(1.15); } 100% { opacity: 0; transform: translateY(-70px); } }
+  .snkcard { background: linear-gradient(180deg, rgba(19,35,63,.96), rgba(8,14,27,.96)) !important; border-color: rgba(226,178,90,.35) !important; }
+  .snk-kicker { font: 600 12px Oswald, sans-serif; letter-spacing: 4px; color: var(--gold); margin-bottom: 4px; }
+  .snk-title { font: 700 34px Oswald, "PingFang SC", sans-serif; letter-spacing: 1px; margin: 4px 0 10px !important; }
+  .fr-score { display: flex; justify-content: center; align-items: center; gap: 18px; margin: 10px 0 6px; }
+  .fr-score div { display: flex; align-items: center; gap: 12px; font-size: 15px; color: #dfe7f5; }
+  .fr-score b { font: 700 48px Oswald, sans-serif; color: #fff; }
+  .fr-score i { font: 700 36px Oswald, sans-serif; color: var(--muted); font-style: normal; }
+  body.snk #modeTag, body.snk #players { display: none !important; }
+  body.snk #bih { top: 104px; } body.snk #toast { top: 140px; }
+  @media (max-width: 720px) { #sb { min-width: 0; width: calc(100vw - 16px); } .sb-side { font-size: 14px; padding: 0 8px; } .sb-score { min-width: 48px; font-size: 22px; } #ballOn { top: 120px; } }
+
+  /* ===================== 全屏结算（科技感）===================== */
+  #result { position: fixed; inset: 0; z-index: 60; overflow: hidden; color: #eaf2ff; --ac: #e2b25a;
+    background: radial-gradient(ellipse 80% 70% at 50% 38%, rgba(16,32,62,.78), rgba(3,6,14,.97) 70%);
+    backdrop-filter: blur(10px) saturate(1.3); -webkit-backdrop-filter: blur(10px) saturate(1.3); }
+  #rsFx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .rs-grid { position: absolute; left: -50%; right: -50%; bottom: -10%; height: 55%; transform: perspective(500px) rotateX(62deg); transform-origin: 50% 100%;
+    background-image: linear-gradient(rgba(90,210,255,.16) 1px, transparent 1px), linear-gradient(90deg, rgba(90,210,255,.16) 1px, transparent 1px);
+    background-size: 60px 60px; mask-image: linear-gradient(to top, #000 10%, transparent 85%); -webkit-mask-image: linear-gradient(to top, #000 10%, transparent 85%);
+    animation: gridMove 3s linear infinite; opacity: 0; }
+  #result.play .rs-grid { animation: gridMove 3s linear infinite, fadeIn 1.2s .2s forwards; }
+  @keyframes gridMove { to { background-position: 0 60px, 0 0; } }
+  @keyframes fadeIn { to { opacity: 1; } }
+  .rs-scan { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 3px); }
+  .rs-scan::after { content: ""; position: absolute; left: 0; right: 0; height: 140px; top: -160px; background: linear-gradient(to bottom, transparent, rgba(90,210,255,.12), transparent); }
+  #result.play .rs-scan::after { animation: scanBar 2.2s .1s cubic-bezier(.5,0,.5,1) 1; }
+  @keyframes scanBar { to { top: 110%; } }
+  .rs-corner { position: absolute; width: 70px; height: 70px; border: 2px solid var(--ac); opacity: 0; filter: drop-shadow(0 0 6px var(--ac)); }
+  .rs-corner.tl { left: 26px; top: 26px; border-right: 0; border-bottom: 0; } .rs-corner.tr { right: 26px; top: 26px; border-left: 0; border-bottom: 0; }
+  .rs-corner.bl { left: 26px; bottom: 26px; border-right: 0; border-top: 0; } .rs-corner.br { right: 26px; bottom: 26px; border-left: 0; border-top: 0; }
+  #result.play .rs-corner { animation: corner .7s .15s cubic-bezier(.2,.9,.2,1) forwards; }
+  @keyframes corner { from { opacity: 0; transform: scale(1.6); } to { opacity: .9; transform: none; } }
+  .rs-hudtxt { position: absolute; top: 34px; font: 500 11px Oswald, monospace; letter-spacing: 3px; color: rgba(90,210,255,.7); opacity: 0; }
+  .rs-hudtxt.l { left: 110px; } .rs-hudtxt.r { right: 110px; }
+  #result.play .rs-hudtxt { animation: fadeIn .6s .6s forwards; }
+  .rs-inner { position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 56px 20px 30px; }
+  .rs-head { position: relative; display: flex; flex-direction: column; align-items: center; padding: 8px 0 2px; }
+  .rs-rings { position: absolute; width: 420px; height: 420px; left: 50%; top: 50%; transform: translate(-50%, -52%); opacity: 0; pointer-events: none; }
+  #result.play .rs-rings { animation: ringsIn 1.1s .2s cubic-bezier(.2,.9,.2,1) forwards; }
+  @keyframes ringsIn { from { opacity: 0; transform: translate(-50%, -52%) scale(.4) rotate(-90deg); } to { opacity: .9; transform: translate(-50%, -52%) scale(1); } }
+  .rs-rings circle { fill: none; transform-origin: 200px 200px; }
+  .rs-rings .r1 { stroke: rgba(90,210,255,.35); stroke-width: 1; stroke-dasharray: 2 6; animation: spin 40s linear infinite; }
+  .rs-rings .r2 { stroke: var(--ac); stroke-width: 2; stroke-dasharray: 120 40 20 40; opacity: .7; animation: spin 18s linear infinite reverse; }
+  .rs-rings .r3 { stroke: rgba(90,210,255,.5); stroke-width: 1; stroke-dasharray: 300 600; animation: spin 7s linear infinite; }
+  .rs-rings .r4 { stroke: var(--ac); stroke-width: 6; stroke-dasharray: 3 9; opacity: .35; animation: spin 26s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .rs-kicker { display: flex; align-items: center; gap: 14px; font: 500 13px Oswald, sans-serif; letter-spacing: 8px; color: rgba(90,210,255,.95); opacity: 0; }
+  .rs-kicker i { width: 60px; height: 1px; background: linear-gradient(90deg, transparent, rgba(90,210,255,.9)); }
+  .rs-kicker i:last-child { transform: scaleX(-1); }
+  #result.play .rs-kicker { animation: kick .8s .35s cubic-bezier(.2,.9,.2,1) forwards; }
+  @keyframes kick { from { opacity: 0; letter-spacing: 30px; filter: blur(6px); } to { opacity: 1; letter-spacing: 8px; filter: none; } }
+  .rs-title { position: relative; margin: 6px 0 0; font: 700 clamp(52px, min(9vw, 14vh), 112px)/1 Oswald, sans-serif; letter-spacing: 10px; text-transform: uppercase;
+    background: linear-gradient(180deg, #fff 0%, #fff4d8 35%, var(--ac) 70%, #8a5a14 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+    clip-path: inset(0 100% 0 0); }
+  .rs-glow { position: absolute; left: 50%; top: 52%; width: 70%; height: 46%; transform: translate(-50%, -50%); background: radial-gradient(ellipse, color-mix(in srgb, var(--ac) 35%, transparent), transparent 70%); filter: blur(18px); opacity: 0; pointer-events: none; }
+  #result.play .rs-glow { animation: fadeIn 1s .9s forwards; }
+  #result.play .rs-title { animation: wipe .9s .6s cubic-bezier(.7,0,.2,1) forwards; }
+  @keyframes wipe { to { clip-path: inset(0 0 0 0); } }
+  .rs-title::before, .rs-title::after { content: attr(data-text); position: absolute; inset: 0; background: none; opacity: 0; }
+  .rs-title::before { color: rgba(90,210,255,.8); -webkit-text-fill-color: rgba(90,210,255,.8); }
+  .rs-title::after { color: rgba(255,60,120,.7); -webkit-text-fill-color: rgba(255,60,120,.7); }
+  #result.play .rs-title::before { animation: glitchA 1.4s .7s steps(1) 1; }
+  #result.play .rs-title::after { animation: glitchB 1.4s .7s steps(1) 1; }
+  @keyframes glitchA { 0% { opacity: .8; transform: translate(-6px, 2px); clip-path: inset(10% 0 60% 0); } 15% { transform: translate(5px, -2px); clip-path: inset(55% 0 20% 0); } 30% { transform: translate(-3px, 0); clip-path: inset(30% 0 40% 0); } 45%, 100% { opacity: 0; } }
+  @keyframes glitchB { 0% { opacity: .7; transform: translate(6px, -2px); clip-path: inset(60% 0 10% 0); } 15% { transform: translate(-5px, 2px); clip-path: inset(20% 0 55% 0); } 30% { transform: translate(3px, 1px); clip-path: inset(45% 0 30% 0); } 45%, 100% { opacity: 0; } }
+  .rs-winner { margin-top: 10px; font: 600 clamp(26px, 4vw, 44px) Oswald, "PingFang SC", sans-serif; letter-spacing: 3px; color: #fff; text-shadow: 0 0 18px rgba(90,210,255,.55); opacity: 0; }
+  #result.play .rs-winner { animation: blurIn .8s 1.15s cubic-bezier(.2,.9,.2,1) forwards; }
+  @keyframes blurIn { from { opacity: 0; filter: blur(12px); transform: translateY(14px) scale(1.06); } to { opacity: 1; filter: none; transform: none; } }
+  .rs-line { width: 0; height: 2px; margin: 10px 0 6px; background: linear-gradient(90deg, transparent, var(--ac), rgba(90,210,255,.9), var(--ac), transparent); box-shadow: 0 0 12px var(--ac); }
+  #result.play .rs-line { animation: lineGrow .9s 1.25s cubic-bezier(.2,.9,.2,1) forwards; }
+  @keyframes lineGrow { to { width: min(520px, 80vw); } }
+  .rs-sub { font-size: 15px; color: #a9bad6; opacity: 0; text-align: center; max-width: 640px; }
+  #result.play .rs-sub { animation: fadeUp .6s 1.45s forwards; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .rs-scorelabel { font: 500 11px Oswald, sans-serif; letter-spacing: 5px; color: #7f93b5; opacity: 0; margin-top: 6px; }
+  #result.play .rs-scorelabel { animation: fadeUp .5s 1.3s forwards; }
+  .rs-score { display: flex; align-items: center; gap: 28px; opacity: 0; }
+  #result.play .rs-score { animation: fadeUp .7s 1.3s forwards; }
+  .rs-pl { position: relative; display: flex; flex-direction: column; align-items: center; min-width: 170px; padding: 12px 22px 14px;
+    background: linear-gradient(180deg, rgba(20,40,75,.55), rgba(8,14,28,.55)); border: 1px solid rgba(90,210,255,.25); clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px); }
+  .rs-pl.win { border-color: var(--ac); background: linear-gradient(180deg, color-mix(in srgb, var(--ac) 22%, transparent), rgba(8,14,28,.6)); }
+  .rs-pn { font-size: 14px; color: #c9d6ee; letter-spacing: 1px; }
+  .rs-num { font: 700 clamp(40px, 8vh, 64px)/1.05 Oswald, sans-serif; color: #fff; font-variant-numeric: tabular-nums; }
+  .rs-pl.win .rs-num { color: var(--ac); text-shadow: 0 0 20px color-mix(in srgb, var(--ac) 60%, transparent); }
+  .rs-crown { position: absolute; top: -1px; right: 14px; font: 600 9px Oswald, sans-serif; letter-spacing: 2px; color: #120d02; background: var(--ac); padding: 2px 6px; font-style: normal; }
+  .rs-vs { width: 46px; height: 46px; display: grid; place-items: center; transform: rotate(45deg); border: 1px solid rgba(90,210,255,.6); box-shadow: 0 0 14px rgba(90,210,255,.35) inset; }
+  .rs-vs span { transform: rotate(-45deg); font: 600 13px Oswald, sans-serif; letter-spacing: 1px; color: #9fdcff; }
+  .rs-stats { display: grid; gap: 6px; width: min(640px, 92vw); margin-top: 8px; }
+  .rs-row { display: grid; grid-template-columns: 52px 1fr 110px 1fr 52px; align-items: center; gap: 10px; opacity: 0; }
+  .rs-stats.single .rs-row { grid-template-columns: 70px 1fr 110px; }
+  #result.play .rs-row { animation: fadeUp .5s var(--d) forwards; }
+  .rs-lb { text-align: center; font-size: 12px; letter-spacing: 2px; color: #8ea4c8; }
+  .rs-v { font: 600 18px Oswald, sans-serif; color: #fff; font-variant-numeric: tabular-nums; }
+  .rs-v.l { text-align: right; } .rs-v.r { text-align: left; }
+  .rs-bar { height: 6px; background: rgba(255,255,255,.06); position: relative; overflow: hidden; }
+  .rs-bar i { position: absolute; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, rgba(90,210,255,.4), #5ad2ff); box-shadow: 0 0 10px #5ad2ff; }
+  .rs-bar.l i { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--ac) 40%, transparent), var(--ac)); box-shadow: 0 0 10px var(--ac); }
+  .rs-bar.r i { left: 0; }
+  #result.play .rs-bar i { animation: barGrow 1s calc(var(--d) + .2s) cubic-bezier(.2,.9,.2,1) forwards; }
+  @keyframes barGrow { to { width: var(--w); } }
+  .rs-actions { display: flex; gap: 16px; margin-top: 12px; opacity: 0; }
+  #result.play .rs-actions { animation: fadeUp .6s 2.6s forwards; }
+  .rs-btn { position: relative; overflow: hidden; padding: 13px 34px; font: 600 15px Oswald, "PingFang SC", sans-serif; letter-spacing: 3px; cursor: pointer;
+    clip-path: polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%); transition: transform .15s, filter .15s; }
+  .rs-btn:hover { transform: translateY(-2px); filter: brightness(1.12); }
+  .rs-btn.main { color: #140e02; background: linear-gradient(90deg, var(--ac), #fff0c8, var(--ac)); background-size: 200% 100%; animation: btnFlow 3s linear infinite; }
+  .rs-btn.ghost2 { color: #cfe6ff; background: rgba(90,210,255,.1); box-shadow: inset 0 0 0 1px rgba(90,210,255,.5); }
+  .rs-btn::after { content: ""; position: absolute; top: 0; bottom: 0; width: 40%; left: -60%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent); animation: shine 2.8s 3s infinite; }
+  @keyframes btnFlow { to { background-position: -200% 0; } }
+  @keyframes shine { 0% { left: -60%; } 40%, 100% { left: 130%; } }
+  @media (max-width: 720px) { .rs-rings { width: 300px; height: 300px; } .rs-pl { min-width: 120px; } .rs-num { font-size: 44px; } .rs-hudtxt { display: none; } .rs-row { grid-template-columns: 36px 1fr 80px 1fr 36px; } }
+
+  /* ---- 结算：斜线分屏 + 巨大比分 ---- */
+  #result { --w1:#e6f6ff; --w2:#5ad2ff; --w3:#1b5a9a; --wbg:#0e2a48; --wglow:rgba(90,210,255,.35);
+            --l1:#ff6b6b; --lbg:#3a0e14; --lglow:rgba(255,80,90,.28); --ac: var(--w2); background: #05060a; }
+  #result.gold { --w1:#fff6dc; --w2:#e2b25a; --w3:#7a4e10; --wbg:#3a2a0e; --wglow:rgba(226,178,90,.38); }
+  .sx-half { position: absolute; inset: 0; overflow: hidden; z-index: 1; }
+  #rsFx { z-index: 2; } .rs-scan { z-index: 5; } .rs-corner, .rs-hudtxt { z-index: 6; } .rs-grid { display: none; }
+  .sx-l { clip-path: polygon(0 0, 0 0, 0 100%, 0 100%); }
+  .sx-r { clip-path: polygon(100% 0, 100% 0, 100% 100%, 100% 100%); }
+  #result.play .sx-l { animation: revealL .9s .35s cubic-bezier(.7,0,.2,1) forwards; }
+  #result.play .sx-r { animation: revealR .9s .35s cubic-bezier(.7,0,.2,1) forwards; }
+  @keyframes revealL { from { clip-path: polygon(57% 0, 57% 0, 43% 100%, 43% 100%); } to { clip-path: polygon(0 0, 57% 0, 43% 100%, 0 100%); } }
+  @keyframes revealR { from { clip-path: polygon(57% 0, 57% 0, 43% 100%, 43% 100%); } to { clip-path: polygon(57% 0, 100% 0, 100% 100%, 43% 100%); } }
+  .sx-half.win { background: radial-gradient(ellipse 60% 70% at var(--gx, 25%) 40%, var(--wbg) 0%, #07080d 62%, #05060a 100%); }
+  .sx-half.lose { background: radial-gradient(ellipse 60% 70% at var(--gx, 75%) 62%, var(--lbg) 0%, #0b0609 62%, #06050a 100%); }
+  .sx-r { --gx: 75%; } .sx-l { --gx: 25%; }
+  .sx-num { position: absolute; top: 50%; font: 700 58vh/.8 Oswald, sans-serif; letter-spacing: -.02em; white-space: nowrap; opacity: 0; }
+  .sx-l .sx-num { right: 49%; } .sx-r .sx-num { left: 49%; }
+  .sx-half.win .sx-num { --ty: -60%; background: linear-gradient(180deg, var(--w1) 0%, var(--w2) 55%, var(--w3) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 40px var(--wglow)); }
+  .sx-half.lose .sx-num { --ty: -34%; color: transparent; -webkit-text-stroke: 2px var(--l1); text-shadow: 0 0 30px var(--lglow); }
+  .sx-l .sx-num { transform: translate(-60vw, var(--ty)); } .sx-r .sx-num { transform: translate(60vw, var(--ty)); }
+  #result.play .sx-num { animation: numIn 1s 1s cubic-bezier(.15,.9,.25,1.05) forwards; }
+  @keyframes numIn { to { opacity: 1; transform: translate(0, var(--ty)); } }
+  .sx-slash { position: absolute; top: -10%; bottom: -10%; left: 50%; width: 4.2vw; z-index: 3; box-shadow: 0 0 40px rgba(0,0,0,.9);
+    transform: translateX(-50%) skewX(-9.1deg) translateY(-120%);
+    background: linear-gradient(90deg, #04070f 0 34%, var(--lc, var(--w2)) 34% 42%, #04070f 42% 58%, var(--rc, var(--l1)) 58% 63%, #04070f 63% 100%); }
+  #result.winR .sx-slash { --lc: var(--l1); --rc: var(--w2); }
+  .sx-slash::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 2px, transparent 2px 9px); }
+  #result.play .sx-slash { animation: slashIn .55s .1s cubic-bezier(.8,0,.2,1) forwards; }
+  @keyframes slashIn { to { transform: translateX(-50%) skewX(-9.1deg) translateY(0); } }
+  .sx-vs { position: absolute; left: 50%; top: 50%; z-index: 4; font: 600 22px Oswald; letter-spacing: 4px; color: #04070f; background: #eaf2ff; padding: 6px 12px;
+    clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); transform: translate(-50%, -50%) scale(0); }
+  #result.play .sx-vs { animation: vsPop .45s 1.7s cubic-bezier(.2,1.6,.4,1) forwards; }
+  @keyframes vsPop { to { transform: translate(-50%, -50%) scale(1); } }
+  .sx-top { position: absolute; top: 4.5%; left: 0; right: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
+  .sx-top .rs-title { font-size: clamp(30px, 5.4vh, 48px); letter-spacing: 12px; background: linear-gradient(180deg, #fff, #dfe9ff); -webkit-background-clip: text; background-clip: text; }
+  #result.gold .sx-top .rs-title { background: linear-gradient(180deg, #fff6dc, #e2b25a); -webkit-background-clip: text; background-clip: text; }
+  .sx-top .rs-sub { font-size: 14px; }
+  /* 球员信息：赢方在下，输方在上；左右跟着谁赢交换 */
+  .sx-info { position: absolute; z-index: 6; display: flex; flex-direction: column; gap: 6px; opacity: 0; max-width: 34vw; }
+  .sx-info-l { left: 6%; } .sx-info-r { right: 6%; align-items: flex-end; text-align: right; }
+  .sx-info.bottom { bottom: 9%; } .sx-info.top { top: 21%; }
+  .sx-info-l { transform: translateX(-30px); } .sx-info-r { transform: translateX(30px); }
+  #result.play .sx-info { animation: infoIn .7s 1.9s cubic-bezier(.2,.9,.2,1) forwards; }
+  #result.play .sx-info.top { animation-delay: 2.1s; }
+  @keyframes infoIn { to { opacity: 1; transform: none; } }
+  .sx-tag { font: 600 13px Oswald; letter-spacing: 5px; }
+  .sx-name { font: 600 clamp(28px, 5.4vh, 46px)/1.1 Oswald, "PingFang SC", sans-serif; letter-spacing: 2px; color: #fff; display: flex; align-items: center; gap: 12px; }
+  .sx-info-r .sx-name { flex-direction: row-reverse; }
+  .sx-badge { font: 600 12px Oswald; letter-spacing: 3px; color: #06080e; padding: 3px 8px; }
+  .sx-list { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 4px; font-size: 13px; color: #9aaccb; }
+  .sx-info-r .sx-list { justify-content: flex-end; }
+  .sx-list span { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+  .sx-list b { font: 600 18px Oswald; color: #fff; }
+  .sx-info.win .sx-tag { color: var(--w2); } .sx-info.win .sx-badge { background: var(--w2); } .sx-info.win .sx-list b { color: var(--w1); }
+  .sx-info.lose .sx-tag { color: var(--l1); } .sx-info.lose .sx-name { color: #ffd9d9; }
+  #result .rs-actions { position: absolute; left: 50%; bottom: 4%; transform: translateX(-50%); z-index: 7; margin: 0; }
+  #result .rs-corner.tl { border-color: var(--w2); } #result .rs-corner.br { border-color: var(--l1); }
+  #result.winR .rs-corner.tl { border-color: var(--l1); } #result.winR .rs-corner.br { border-color: var(--w2); }
+  .rs-kicker { color: #aab8d0; } .rs-kicker i { background: linear-gradient(90deg, transparent, #aab8d0); }
+  @media (max-width: 720px) { .sx-num { font-size: 34vh; } .sx-info { max-width: 44vw; } .sx-list { display: none; } }
+
+  /* ---- 147 满分杆：发光彩虹 ---- */
+  #result.rainbow { --w2: #ff5ad8; --wglow: rgba(255,255,255,.5); }
+  #result.rainbow .sx-half.win { background: radial-gradient(ellipse 60% 70% at var(--gx) 40%, #2a1240 0%, #0a0714 62%, #05060a 100%); }
+  #result.rainbow .sx-half.win .sx-num, #result.rainbow .sx-top .rs-title {
+    background: linear-gradient(90deg, #ff3b3b, #ff9a1f, #ffe83b, #3bff7a, #3bd8ff, #5a6bff, #c43bff, #ff3b3b) !important;
+    background-size: 100% 100% !important; -webkit-background-clip: text !important; background-clip: text !important; color: transparent !important; }
+  #result.rainbow.play .sx-top .rs-title { animation: wipe .9s .6s cubic-bezier(.7,0,.2,1) forwards, hueSpin 3s linear infinite; }
+  #result.rainbow .sx-half.win .sx-num { filter: drop-shadow(0 0 30px rgba(255,90,216,.55)) drop-shadow(0 0 60px rgba(59,216,255,.35)); }
+  #result.rainbow.play .sx-half.win .sx-num { animation: numIn 1s 1s cubic-bezier(.15,.9,.25,1.05) forwards, rbGlow 3s linear infinite; }
+  @keyframes hueSpin { to { filter: hue-rotate(360deg); } }
+  @keyframes rainbowFlow { to { background-position: -300% 0; } }
+  @keyframes rbGlow { to { filter: hue-rotate(360deg) drop-shadow(0 0 30px rgba(255,90,216,.55)) drop-shadow(0 0 60px rgba(59,216,255,.35)); } }
+  #result.rainbow .sx-slash { background: linear-gradient(90deg, #04070f 0 34%, transparent 34% 42%, #04070f 42% 58%, var(--rc, var(--l1)) 58% 63%, #04070f 63% 100%),
+    linear-gradient(180deg, #ff3b3b, #ffe83b, #3bff7a, #3bd8ff, #c43bff, #ff3b3b); background-size: 100% 100%, 100% 200%; animation: slashIn .55s .1s cubic-bezier(.8,0,.2,1) forwards, slashRb 2s linear infinite; }
+  #result.rainbow.winR .sx-slash { background: linear-gradient(90deg, #04070f 0 34%, var(--l1) 34% 42%, #04070f 42% 58%, transparent 58% 63%, #04070f 63% 100%),
+    linear-gradient(180deg, #ff3b3b, #ffe83b, #3bff7a, #3bd8ff, #c43bff, #ff3b3b); background-size: 100% 100%, 100% 200%; }
+  @keyframes slashRb { to { background-position: 0 0, 0 -200%; } }
+  #result.rainbow .sx-info.win .sx-badge { background: linear-gradient(90deg, #ff3b3b, #ffe83b, #3bff7a, #3bd8ff, #c43bff); }
+  #result.rainbow .sx-info.win .sx-tag { color: #fff; text-shadow: 0 0 10px rgba(255,90,216,.8); }
+  #result.rainbow .sx-info.win .sx-list b, #result.rainbow .sx-info.win .sx-name span:first-child {
+    background: linear-gradient(90deg, #ff3b3b, #ff9a1f, #ffe83b, #3bff7a, #3bd8ff, #5a6bff, #c43bff); -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 6px rgba(255,90,216,.6)); animation: hueSpin 3s linear infinite; }
+  #result.rainbow .rs-corner { border-image: linear-gradient(135deg, #ff3b3b, #ffe83b, #3bff7a, #3bd8ff, #c43bff) 1; }
+  #snkBanner.bn-rainbow b { background: linear-gradient(90deg, #ff3b3b, #ff9a1f, #ffe83b, #3bff7a, #3bd8ff, #5a6bff, #c43bff, #ff3b3b); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; filter: drop-shadow(0 0 18px rgba(255,90,216,.7)); animation: rainbowFlow 1.6s linear infinite; }
+  #snkBanner.bn-rainbow .bn-in { border-image: linear-gradient(90deg, #ff3b3b, #ffe83b, #3bff7a, #3bd8ff, #c43bff) 1; }
+
+  /* ===================== 147 过场 ===================== */
+  body.cine-on #snkUI, body.cine-on #spinWrap, body.cine-on #powerWrap, body.cine-on #hint, body.cine-on #lockHint, body.cine-on #bih, body.cine-on #toast, body.cine-on #menuBtn, body.cine-on #modeTag, body.cine-on #players { display: none !important; }
+  #cine { position: fixed; inset: 0; z-index: 70; pointer-events: auto; cursor: pointer; overflow: hidden; }
+  #cine > * { position: absolute; pointer-events: none; }
+  #cineFx { inset: 0; width: 100%; height: 100%; }
+  #cnFreeze { inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.12) 0 2px, transparent 2px 4px), rgba(255,255,255,.6); }
+  #cnVig { inset: 0; background: radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,.92) 100%); opacity: 0; }
+  #cnBarT, #cnBarB { left: 0; right: 0; height: 0; background: #000; }
+  #cnBarT { top: 0; } #cnBarB { bottom: 0; }
+  #cnRec { top: 13vh; left: 4vw; display: flex; align-items: center; gap: 10px; font: 500 15px Oswald, monospace; letter-spacing: 3px; color: #fff; text-shadow: 0 0 8px rgba(0,0,0,.8); }
+  #cnRec i { width: 11px; height: 11px; border-radius: 50%; background: #ff2a3a; box-shadow: 0 0 10px #ff2a3a; }
+  #cnRec span { color: rgba(255,255,255,.75); }
+  #cnLower { left: 4vw; bottom: 15vh; display: flex; flex-direction: column; gap: 2px; padding: 10px 26px 12px 18px; border-left: 4px solid #e2b25a;
+    background: linear-gradient(90deg, rgba(8,14,28,.92), rgba(8,14,28,.6) 70%, transparent); opacity: 0; }
+  #cnLower em { font-style: normal; font: 500 12px Oswald; letter-spacing: 4px; color: #e2b25a; }
+  #cnLower b { font: 600 34px Oswald, "PingFang SC"; letter-spacing: 2px; color: #fff; }
+  #cnTicker { right: 4vw; bottom: 14vh; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; opacity: 0; }
+  #cnTicker em { font-style: normal; font: 600 13px Oswald; letter-spacing: 6px; color: #9fb0cc; }
+  #cnTicker b { font: 700 92px/0.9 Oswald; color: #fff; text-shadow: 0 0 24px rgba(226,178,90,.6); transform-origin: 100% 60%; font-variant-numeric: tabular-nums; }
+  #cnChips { display: grid; grid-template-columns: repeat(12, 14px); gap: 4px; direction: rtl; }
+  #cnChips i { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset -2px -3px 4px rgba(0,0,0,.45), inset 1px 1px 2px rgba(255,255,255,.4), 0 0 6px rgba(255,255,255,.15); opacity: 0; }
+  #cnFor { left: 50%; top: 22%; transform: translateX(-50%); font: 700 64px Oswald; letter-spacing: 40px; color: #fff; opacity: 0; white-space: nowrap;
+    text-shadow: 0 0 30px rgba(255,255,255,.4); }
+  #cnFlash { inset: 0; background: #fff; opacity: 0; }
+  #cnRays { left: 50%; top: 46%; width: 220vmax; height: 220vmax; opacity: 0;
+    background: repeating-conic-gradient(from 0deg, rgba(255,255,255,.22) 0deg 4deg, transparent 4deg 15deg);
+    mask-image: radial-gradient(circle, #000 0%, transparent 55%); -webkit-mask-image: radial-gradient(circle, #000 0%, transparent 55%); }
+  .cn-ring { left: 50%; top: 46%; width: 40vmin; height: 40vmin; border-radius: 50%; border: 10px solid; opacity: 0;
+    border-color: #ff4d6d #ffe83b #3bff7a #3bd8ff; box-shadow: 0 0 40px rgba(255,255,255,.4), inset 0 0 40px rgba(255,255,255,.3); }
+  #cnBig { left: 50%; top: 46%; width: 1px; height: 1px; opacity: 0; transform-origin: 0 0; }
+  #cnBig > div { position: absolute; left: 0; top: 0; transform-origin: 0 0; font: 700 34vh/1 Oswald, sans-serif; letter-spacing: -.01em; white-space: nowrap; translate: -50% -50%; }
+  .cn-ext { color: #2a0f48; -webkit-text-stroke: 1px rgba(255,255,255,.08); }
+  .cn-front { background: linear-gradient(90deg, #ff3b3b, #ff9a1f, #ffe83b, #3bff7a, #3bd8ff, #5a6bff, #c43bff); -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 30px rgba(255,255,255,.45)) drop-shadow(0 0 70px rgba(255,90,216,.5)); }
+  .cn-shine { background: linear-gradient(180deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,0) 45%); -webkit-background-clip: text; background-clip: text; color: transparent; mix-blend-mode: overlay; }
+  #cnBigTxt { left: 0; right: 0; top: 72%; display: flex; justify-content: center; perspective: 600px; }
+  #cnBigTxt span { display: inline-block; font: 700 clamp(28px, 5.5vh, 56px) Oswald; letter-spacing: 10px; color: #fff; opacity: 0;
+    text-shadow: 0 0 18px rgba(255,255,255,.7), 0 0 40px rgba(255,90,216,.6); }
+  #cnName2 { left: 0; right: 0; top: 82%; text-align: center; font: 600 26px Oswald, "PingFang SC"; letter-spacing: 6px; color: #e8edff; opacity: 0; }
+  #cnSkip { right: 3vw; top: 13vh; font-size: 12px; letter-spacing: 2px; color: #fff; opacity: .5; }
+  body.tut #bih { top: 200px; } body.tut #toast { top: 236px; }
+  @media (max-width: 720px) {
+    #players { top: 8px; gap: 6px; }
+    .player { min-width: 0; padding: 7px 9px; }
+    .chip { width: 14px; height: 14px; } .chip i { display: none; }
+    #hint { display: none; }
+    #power { height: 200px; }
+    #spin { width: 84px; height: 84px; }
+    .card { padding: 20px; }
+  }
+
+  /* ---- 在线对战 ---- */
+  .netbtn b::after { content: "NEW"; margin-left: 8px; font: 600 10px Oswald, sans-serif; letter-spacing: 1px; padding: 2px 6px; border-radius: 4px; background: #4dd0ff; color: #04121c; vertical-align: 2px; }
+  .on-tabs { margin: 4px 0 16px; }
+  .on-tabs button { flex: 1; padding: 8px 12px; font-size: 14px; }
+  #onCodeBox { margin: 4px 0 6px; padding: 14px 16px; border-radius: 12px; background: rgba(77,208,255,.07); border: 1px solid rgba(77,208,255,.35); }
+  #onCodeBox em { font-style: normal; font-size: 12px; letter-spacing: 2px; color: var(--muted); }
+  .on-code { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .on-code b { font: 700 46px/1.1 Oswald, ui-monospace, monospace; letter-spacing: 12px; color: #e8f8ff; text-shadow: 0 0 18px rgba(77,208,255,.55); user-select: all; }
+  .on-wait { display: flex; gap: 6px; margin-top: 6px; }
+  .on-wait i { width: 6px; height: 6px; border-radius: 50%; background: #4dd0ff; animation: onDot 1.2s infinite; }
+  .on-wait i:nth-child(2) { animation-delay: .2s; } .on-wait i:nth-child(3) { animation-delay: .4s; }
+  @keyframes onDot { 0%, 100% { opacity: .2; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
+  .field input.on-codein { font: 700 26px Oswald, ui-monospace, monospace; letter-spacing: 10px; text-transform: uppercase; text-align: center; }
+  #onStatus { min-height: 20px; margin-top: 12px; font-size: 13px; color: #9fdcf5; }
+  #onStatus.bad { color: var(--bad); }
+  button:disabled { opacity: .5; cursor: default; }
+  #netTag { position: fixed; top: 14px; left: 14px; padding: 8px 12px; font-size: 12px; min-width: 150px; z-index: 4; }
+  #netTag .nt-top { display: flex; align-items: center; gap: 7px; color: var(--muted); }
+  #netTag .nt-top b { color: var(--text); letter-spacing: 1px; }
+  #netTag .nt-dot { width: 7px; height: 7px; border-radius: 50%; background: #45d483; box-shadow: 0 0 8px #45d483; }
+  #netTag .nt-state { margin-top: 4px; font-size: 13px; color: #9fdcf5; }
+  #netTag.mine { border-color: rgba(226,178,90,.7); }
+  #netTag.mine .nt-state { color: var(--gold); font-weight: 700; }
+  #netTag.flash { animation: ntFlash 1.4s ease-out; }
+  @keyframes ntFlash { 0% { box-shadow: 0 0 0 0 rgba(226,178,90,.9); transform: scale(1.08); } 100% { box-shadow: 0 0 0 18px rgba(226,178,90,0); transform: scale(1); } }
+  body.cine-on #netTag { display: none !important; }
+  .rs-btn:disabled { animation: none; filter: grayscale(.6); opacity: .6; cursor: default; transform: none; }
+  .rs-btn:disabled::after { display: none; }
+</style>
+<script type="importmap">
+  { "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  } }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="players">
+  <div class="player panel" id="p0"><div class="top"><span class="name"></span><span class="group"></span></div><div class="balls"></div></div>
+  <div class="player panel" id="p1"><div class="top"><span class="name"></span><span class="group"></span></div><div class="balls"></div></div>
+</div>
+<div id="modeTag" class="panel hidden"></div>
+<div id="bih"></div>
+<div id="toast" class="panel"></div>
+<div id="lockHint" class="panel">点击画面锁定鼠标 · 鼠标转向 · <b>按住 S</b> 前后推拉出杆 · <b>E</b> 加塞 · <b>B</b> 抬杆尾 · <b>M</b> 摆自由球 · <b>Esc</b> 菜单</div>
+
+<button id="menuBtn" class="panel">菜单<kbd>Esc</kbd></button>
+
+<div id="powerWrap">
+  <div id="power" class="panel"><div class="track"><div id="powerFill"></div></div><span class="grip">按住往下拉 · 松手出杆</span></div>
+  <div id="powerVal"></div>
+</div>
+
+<div id="spinWrap" class="panel">
+  <div id="spin"><div id="spinUser"></div><div id="spinDot"></div></div>
+  <div id="spinLabel">中杆</div>
+  <div id="autoBadge" class="hidden"></div>
+  <div id="cueName"></div>
+</div>
+
+<div id="hint" class="panel">鼠标转向/抬头（<b>Shift</b> 微调）· 按住 <b>S</b> 前后推拉出杆 · <b>E</b> 加塞 · <b>B</b> 抬杆尾 · <b>M</b> 摆自由球 · <b>滚轮</b>前后 · <b>V</b> 视角 · <b>G</b> 辅助线 · <b>Esc</b> 菜单</div>
+
+<!-- 教学面板 -->
+<div id="tut" class="panel hidden">
+  <div class="head"><h4 id="tutTitle"></h4><span class="step" id="tutStep"></span></div>
+  <p id="tutText"></p>
+  <div id="tutFb"></div>
+  <div class="bar"><i id="tutBar"></i></div>
+</div>
+
+<!-- 主菜单 -->
+<div id="mainMenu" class="overlay hidden">
+  <div class="card panel" style="max-width:520px">
+    <h1>台球</h1>
+    <p class="sub">中式八球 · 斯诺克 · 第一视角 · <span style="opacity:.6">版本 1.0（在线对战）</span></p>
+    <div class="bigbtns">
+      <button class="bigbtn" data-go="practice"><b>单人练习</b><span>自由打，不计犯规</span></button>
+      <button class="bigbtn snkbtn" data-go="snooker"><b>斯诺克</b><span>12 尺斯诺克台 · 双人 · WPBSA 规则</span></button>
+      <button class="bigbtn" data-go="match"><b>中式八球 · 双人对战</b><span>同一台电脑轮流打 · 需要输入用户名</span></button>
+      <button class="bigbtn netbtn" data-go="online"><b>在线对战</b><span>联机码开房 · 中式八球 / 斯诺克</span></button>
+      <button class="bigbtn" data-go="tutorial"><b>教学关</b><span>重新学一遍所有操作</span></button>
+      <button class="bigbtn" data-go="settings"><b>设置 / 球杆</b><span>换杆、辅助线、灵敏度</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- 输入用户名 -->
+<div id="nameModal" class="overlay hidden">
+  <div class="card panel" style="max-width:440px">
+    <h2 id="nameTitle">输入用户名</h2>
+    <p class="sub">双人对战需要两位玩家各自的用户名</p>
+    <div class="field"><label for="name0">玩家 1（先开球）</label><input id="name0" maxlength="12" autocomplete="off" placeholder="1~12 个字"></div>
+    <div class="field"><label for="name1">玩家 2</label><input id="name1" maxlength="12" autocomplete="off" placeholder="1~12 个字"></div>
+    <div class="field" id="boRow"><label>赛制</label>
+      <div class="seg" id="boSeg"><button data-bo="1">1 局</button><button data-bo="3">3 局 2 胜</button><button data-bo="5">5 局 3 胜</button><button data-bo="7">7 局 4 胜</button></div></div>
+    <div class="errmsg" id="nameErr"></div>
+    <div class="actions"><button class="ghost" id="nameBack">返回</button><button class="primary" id="nameGo">开始对战</button></div>
+  </div>
+</div>
+
+<!-- 在线对战大厅 -->
+<div id="onlineModal" class="overlay hidden">
+  <div class="card panel" style="max-width:460px">
+    <h2>在线对战</h2>
+    <p class="sub">一个人开房间拿到联机码，另一个人输入联机码加入</p>
+    <div class="field"><label for="onName">你的用户名</label><input id="onName" maxlength="12" autocomplete="off" placeholder="1~12 个字，对手会看到"></div>
+    <div class="seg on-tabs" id="onTabs"><button data-tab="create">创建房间</button><button data-tab="join">加入房间</button></div>
+    <div id="onCreatePane">
+      <div class="field"><label>玩法</label>
+        <div class="seg" id="onGame"><button data-g="pool">中式八球</button><button data-g="snooker">斯诺克</button></div></div>
+      <div class="field" id="onBoRow"><label>赛制</label>
+        <div class="seg" id="onBo"><button data-bo2="1">1 局</button><button data-bo2="3">3 局 2 胜</button><button data-bo2="5">5 局 3 胜</button><button data-bo2="7">7 局 4 胜</button></div></div>
+      <div id="onCodeBox" class="hidden">
+        <em>联机码</em>
+        <div class="on-code"><b id="onCode">----</b><button class="ghost" id="onCopy">复制</button></div>
+        <div class="on-wait"><i></i><i></i><i></i></div>
+      </div>
+      <div class="actions" style="margin-top:6px"><button class="primary" id="onCreate">创建房间</button></div>
+    </div>
+    <div id="onJoinPane" class="hidden">
+      <div class="field"><label for="onJoinCode">联机码</label><input id="onJoinCode" class="on-codein" maxlength="4" autocomplete="off" spellcheck="false" placeholder="ABCD"></div>
+      <div class="actions" style="margin-top:6px"><button class="primary" id="onJoin">加入</button></div>
+    </div>
+    <div id="onStatus"></div>
+    <div class="actions"><button class="ghost" id="onBack">返回</button></div>
+  </div>
+</div>
+
+<!-- 联机断开 -->
+<div id="netLost" class="overlay hidden">
+  <div class="card panel" style="max-width:380px;text-align:center">
+    <h2>连接已断开</h2>
+    <p class="sub" id="netLostTxt">对手离开了房间</p>
+    <div class="actions" style="justify-content:center"><button class="primary" id="netLostBtn">返回主菜单</button></div>
+  </div>
+</div>
+
+<!-- 联机状态 -->
+<div id="netTag" class="panel hidden"></div>
+
+<!-- ===================== 斯诺克转播风格界面 ===================== -->
+<div id="snkUI" class="hidden">
+  <div id="sb">
+    <div class="sb-main">
+      <div class="sb-side sb-left" id="sbP0"><i class="sb-arrow"></i><span class="sb-name"></span><span class="sb-fr"></span></div>
+      <div class="sb-score" id="sbS0">0</div>
+      <div class="sb-mid"><span id="sbBo">BEST OF 3</span><b id="sbFrame">FRAME 1</b></div>
+      <div class="sb-score" id="sbS1">0</div>
+      <div class="sb-side sb-right" id="sbP1"><span class="sb-fr"></span><span class="sb-name"></span><i class="sb-arrow"></i></div>
+    </div>
+    <div class="sb-sub">
+      <div class="sb-cell sb-break" id="sbBreak"><em>BREAK</em><b id="sbBreakN">0</b><span id="sbBreakBalls"></span></div>
+      <div class="sb-cell"><em>台面剩余</em><b id="sbRem">147</b></div>
+      <div class="sb-cell"><em>分差</em><b id="sbDiff">0</b></div>
+      <div class="sb-cell sb-req hidden" id="sbReq">需要斗球</div>
+    </div>
+  </div>
+  <div id="ballOn"><em>目标球</em><span id="ballOnDots"></span><b id="ballOnTxt">红球</b></div>
+  <div id="snkBanner"><div class="bn-in"><b id="bnBig"></b><span id="bnSmall"></span></div></div>
+  <div id="ptsFloat"></div>
+  <div id="hbBox"><em>最高单杆</em><span id="hb0"></span><span id="hb1"></span></div>
+</div>
+
+<!-- 犯规后的选择 -->
+<div id="foulModal" class="overlay hidden">
+  <div class="card panel snkcard" style="max-width:480px">
+    <div class="snk-kicker">FOUL</div>
+    <h2 id="foulTitle"></h2>
+    <p class="sub" id="foulSub"></p>
+    <div class="bigbtns">
+      <button class="bigbtn" id="fPlay"><b>我来打</b><span id="fPlaySub">从现在的位置继续</span></button>
+      <button class="bigbtn" id="fAgain"><b>让对方再打一杆</b><span>犯规的一方从现在的位置再打</span></button>
+      <button class="bigbtn" id="fReplace"><b>放回原位，让对方重打</b><span>MISS：所有球摆回出杆前的位置</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- 一局结束 -->
+<div id="frameModal" class="overlay hidden">
+  <div class="card panel snkcard" style="max-width:560px;text-align:center">
+    <div class="snk-kicker" id="frKicker">FRAME WON</div>
+    <h2 id="frTitle" class="snk-title"></h2>
+    <div class="fr-score"><div><span id="frN0"></span><b id="frS0"></b></div><i>:</i><div><b id="frS1"></b><span id="frN1"></span></div></div>
+    <p class="sub" id="frSub"></p>
+    <div class="actions" style="justify-content:center"><button class="ghost" id="frMain">主菜单</button><button class="primary" id="frNext">下一局</button></div>
+  </div>
+</div>
+
+<!-- ===================== 147 过场动画 ===================== -->
+<div id="cine" class="hidden">
+  <div id="cnFreeze"></div>
+  <div id="cnVig"></div>
+  <canvas id="cineFx"></canvas>
+  <div id="cnRays"></div>
+  <div class="cn-ring" id="cnRing0"></div><div class="cn-ring" id="cnRing1"></div><div class="cn-ring" id="cnRing2"></div><div class="cn-ring" id="cnRing3"></div>
+  <div id="cnBig"></div>
+  <div id="cnBigTxt"></div>
+  <div id="cnName2"></div>
+  <div id="cnFor">FOR 147</div>
+  <div id="cnBarT"></div><div id="cnBarB"></div>
+  <div id="cnRec"><i id="cnDot"></i><b>REPLAY</b><span id="cnTC">00:00:00</span></div>
+  <div id="cnLower"><em>MAXIMUM BREAK · 满分杆回放</em><b id="cnName"></b></div>
+  <div id="cnTicker"><em>BREAK</em><b id="cnPts">0</b><div id="cnChips"></div></div>
+  <div id="cnFlash"></div>
+  <div id="cnSkip">点击跳过</div>
+</div>
+
+<!-- ===================== 全屏结算 ===================== -->
+<div id="result" class="hidden">
+  <canvas id="rsFx"></canvas>
+  <div class="rs-grid"></div>
+  <div class="rs-scan"></div>
+  <div class="rs-corner tl"></div><div class="rs-corner tr"></div><div class="rs-corner bl"></div><div class="rs-corner br"></div>
+  <div class="rs-hudtxt l">SYS.RESULT // 0x8B · SYNC OK</div>
+  <div class="rs-hudtxt r" id="rsClock"></div>
+  <div class="sx-half sx-l"><div class="sx-num" id="sxNumL">0</div></div>
+  <div class="sx-half sx-r"><div class="sx-num" id="sxNumR">0</div></div>
+  <div class="sx-slash"></div>
+  <div class="sx-vs">VS</div>
+  <div class="sx-top">
+    <div class="rs-kicker"><i></i><span id="rsKicker">RESULT</span><i></i></div>
+    <h1 class="rs-title" id="rsTitle" data-text="">CHAMPION</h1>
+    <div class="rs-sub" id="rsSub"></div>
+  </div>
+  <div class="sx-info sx-info-l" id="sxInfoL"></div>
+  <div class="sx-info sx-info-r" id="sxInfoR"></div>
+  <div class="rs-actions">
+    <button class="rs-btn ghost2" id="rsSecondary">主菜单</button>
+    <button class="rs-btn main" id="rsPrimary">继续</button>
+  </div>
+</div>
+
+<!-- Esc 菜单 -->
+<div id="pause" class="overlay hidden">
+  <div class="card panel">
+    <h2 id="pauseTitle">菜单</h2>
+    <h3>球杆</h3>
+    <div class="cues" id="cueList"></div>
+    <h3>设置</h3>
+    <div class="row"><label>辅助线</label>
+      <div class="seg"><button data-aim="off">关</button><button data-aim="half">半</button><button data-aim="full">全</button></div></div>
+    <div class="row"><label>视角</label>
+      <div class="seg"><button data-cam="3d">第一视角</button><button data-cam="top">俯视</button></div></div>
+    <div class="row"><label>画质</label>
+      <div class="seg"><button data-q="auto">自动</button><button data-q="high">高清</button><button data-q="fast">流畅</button></div></div>
+    <div class="row"><label>鼠标灵敏度</label><input type="range" id="sens" min="0.3" max="2.5" step="0.05"></div>
+    <div class="row"><label>出杆力度灵敏度</label><input type="range" id="psens" min="0.4" max="2" step="0.05"></div>
+    <div class="row"><label>音效</label><div class="seg"><button data-snd="1">开</button><button data-snd="0">关</button></div></div>
+    <h3>按键</h3>
+    <div class="keys">
+      <kbd>移动鼠标</kbd><span>转向（左右）· 抬头/低头（前后）· 按住 Shift 微调</span>
+      <kbd>按住 S</kbd><span>方向锁定，鼠标往后拉、往前推出杆，推得越快越有力（可以来回试杆）</span>
+      <kbd>按住 E</kbd><span>移动杆头：左右 = 左右塞，前后 = 高低杆</span>
+      <kbd>按住 B</kbd><span>抬杆尾：鼠标往前抬高、往后放低（抬杆 + 侧塞 = 扎杆）</span>
+      <kbd>按住 M</kbd><span>自由球时移动母球</span>
+      <kbd>V / G</kbd><span>切换视角 / 切换辅助线</span>
+      <kbd>滚轮</kbd><span>眼睛离母球远近</span>
+    </div>
+    <div class="actions">
+      <button class="ghost" id="pTutorial">重新教学</button>
+      <button class="ghost" id="pRestart">重新开局</button>
+      <button class="ghost" id="pMain">返回主菜单</button>
+      <button class="primary" id="pResume">继续</button>
+    </div>
+  </div>
+</div>
+
+<!-- 结束 -->
+<div id="over" class="overlay hidden">
+  <div class="card panel" style="max-width:420px;text-align:center">
+    <h2 id="overTitle" style="color:var(--gold);font-size:26px"></h2>
+    <p class="sub" id="overMsg"></p>
+    <div class="actions" style="justify-content:center"><button class="ghost" id="overMain">主菜单</button><button class="primary" id="again">再来一局</button></div>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
